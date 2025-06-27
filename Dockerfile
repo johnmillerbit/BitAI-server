@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Build the TypeScript source code into JavaScript
-RUN pnpm build
+RUN pnpm exec tsc
 
 # Expose the port the app runs on
 EXPOSE 3001
