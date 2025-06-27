@@ -116,6 +116,10 @@ async function initializeVectorStore(): Promise<PGVectorStore> {
     }
 }
 
+app.get("/", (req, res) => {
+    res.send("Hiiiiiii")
+})
+
 // New endpoint to add documents to PGVectorStore
 app.post(
     "/add-document",
