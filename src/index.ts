@@ -120,6 +120,10 @@ app.get("/", (req, res) => {
     res.send("Hiiiiiii")
 })
 
+app.get("/kuy", (req, res) => {
+    res.send("Kuy")
+})
+
 // New endpoint to add documents to PGVectorStore
 app.post(
     "/add-document",
