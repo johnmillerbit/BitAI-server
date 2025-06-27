@@ -1,45 +1,100 @@
 import { GoogleGenAI } from "@google/genai";
-import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { PGVectorStore } from "@langchain/community/vectorstores/pgvector";
 import express, { Request, Response } from "express";
 import dotenv from "dotenv";
-import cors from "cors"
+import cors from "cors";
 
 dotenv.config();
 
-// Define interfaces
-interface RagRequestBody {
+// Define interfaces for chat requests
+interface ChatMessage {
+    role: "user" | "model";
+    parts: Array<{ text: string }>;
+}
+
+interface ChatRequestBody {
     query: string;
-    history?: Array<{
-        role: "user" | "model" | "system";
-        parts: Array<{ text: string }>;
-    }>;
+    history?: ChatMessage[];
 }
 
 interface StreamResponse {
     text: string;
 }
 
+// Interface for document addition
+interface AddDocumentRequestBody {
+    content: string;
+    metadata?: Record<string, any>;
+}
+
 // Initialize Express
 const app = express();
 app.use(express.json());
-app.use(cors({
-    origin: "http://localhost:3000"
-}))
+app.use(
+    cors({
+        origin: "http://localhost:3000",
+    })
+);
 
-// Initialize Gemini
+// Validate environment variables
+if (!process.env.GOOGLE_API_KEY) {
+    throw new Error("GOOGLE_API_KEY is required");
+}
+
+if (!process.env.POSTGRES_URL) {
+    throw new Error("POSTGRES_URL is required");
+}
+
+// Initialize GoogleGenAI
 const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
+const model = "gemini-2.5-flash";
+const embeddingModel = "gemini-embedding-exp-03-07";
 
-// Initialize Google Embeddings
-const embeddings = new GoogleGenerativeAIEmbeddings({
-    apiKey: process.env.GOOGLE_API_KEY!,
-    model: "embedding-001",
-});
+const baseSystemInstruction = `You are BitAI,
+
+Use the provided context from the RAG system to answer questions accurately. If the RAG system does not provide relevant documents or information, generate a response based on your own knowledge and reasoning, ensuring it is helpful and accurate to the best of your abilities.
+
+Answer in Lao language when requested.
+
+Be helpful, conversational, and provide detailed responses based on the context or your knowledge.`;
+
+// Custom embedding function for gemini-embedding-exp-03-07
+async function generateEmbedding(text: string): Promise<number[]> {
+    try {
+        const response = await genAI.models.embedContent({
+            model: embeddingModel,
+            contents: text,
+            config: { taskType: "RETRIEVAL_DOCUMENT" }, // Fixed: Changed taskType to task_type
+        });
+
+        // Check if embeddings and values exist
+        if (!response.embeddings || !response.embeddings[0]?.values) {
+            throw new Error("Failed to generate valid embedding: response is empty or invalid");
+        }
+
+        return response.embeddings[0].values;
+    } catch (error) {
+        console.error("Error generating embedding:", error);
+        throw new Error(`Failed to generate embedding for text: ${text}`);
+    }
+}
+
+// Custom embeddings class compatible with LangChain
+class CustomGeminiEmbeddings {
+    async embedDocuments(texts: string[]): Promise<number[][]> {
+        const embeddings = await Promise.all(texts.map((text) => generateEmbedding(text)));
+        return embeddings;
+    }
+
+    async embedQuery(text: string): Promise<number[]> {
+        return generateEmbedding(text);
+    }
+}
 
 // Initialize pgvector
 const pgConfig = {
     postgresConnectionOptions: {
-        connectionString: process.env.POSTGRES_URL!,
+        connectionString: process.env.POSTGRES_URL,
     },
     tableName: "documents",
     columns: {
@@ -50,23 +105,77 @@ const pgConfig = {
     },
 };
 
-async function initializeVectorStore() {
-    const vectorStore = await PGVectorStore.initialize(embeddings, pgConfig);
-    // const docs = [
-    //     {
-    //         pageContent: "MillerBit is a passionate programming student team dedicated to learning, building, and growing together in the world of technology. Founded by a group of like-minded students with a shared interest in coding, MillerBit focuses on developing real-world projects, participating in hackathons, and continuously improving technical skills.",
-    //         metadata: { source: "wiki" },
-    //     }
-    // ];
-    // await vectorStore.addDocuments(docs);
-    return vectorStore;
+async function initializeVectorStore(): Promise<PGVectorStore> {
+    try {
+        const embeddings = new CustomGeminiEmbeddings();
+        const vectorStore = await PGVectorStore.initialize(embeddings, pgConfig);
+        return vectorStore;
+    } catch (error) {
+        console.error("Failed to initialize vector store:", error);
+        throw new Error("Vector store initialization failed");
+    }
 }
 
-// RAG Stream API
+// New endpoint to add documents to PGVectorStore
 app.post(
-    "/api/rag",
-    async (req: Request<{}, {}, RagRequestBody>, res: Response) => {
+    "/add-document",
+    async (
+        req: Request<{}, {}, AddDocumentRequestBody>,
+        res: Response
+    ): Promise<void> => {
+        const { content, metadata = {} } = req.body;
+
+        // Validate request body
+        if (!content || typeof content !== "string") {
+            res.status(400).json({
+                error: "Content is required and must be a string",
+            });
+            return;
+        }
+
+        try {
+            const vectorStore = await initializeVectorStore();
+
+            // Add document to vector store
+            await vectorStore.addDocuments([
+                {
+                    pageContent: content,
+                    metadata,
+                },
+            ]);
+
+            res.status(200).json({
+                message: "Document added successfully",
+                content,
+                metadata,
+            });
+        } catch (error: unknown) {
+            console.error("Error adding document:", error);
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : "Failed to add document to vector store";
+            res.status(500).json({ error: errorMessage });
+        }
+    }
+);
+
+// Chat Stream API with RAG and history
+app.post(
+    "/chat",
+    async (
+        req: Request<{}, {}, ChatRequestBody>,
+        res: Response
+    ): Promise<void> => {
         const { query, history = [] } = req.body;
+
+        // Validate request body
+        if (!query || typeof query !== "string") {
+            res.status(400).json({
+                error: "Query is required and must be a string",
+            });
+            return;
+        }
 
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
@@ -82,25 +191,44 @@ app.post(
                 .map((doc) => doc.pageContent)
                 .join("\n");
 
-            // Add context as the first message in history (role: model)
-            const contextMessage = {
-                role: "model" as const,
-                parts: [{ text: `You are BitAI. Use the following context to answer the query in lao language.\nContext: ${context}\nAnswer in a conversational tone.` }],
-            };
-            const chatHistory = [contextMessage, ...history];
+            // Log similarity search results with scores
+            const test = await vectorStore.similaritySearchWithScore(query, 3);
+            console.log("Similarity Search Results:", test);
 
-            // Create chat instance
-            const chat = genAI.chats.create({
-                model: "gemini-2.5-flash",
-                history: chatHistory,
-            });
+            // Combine base system instruction with RAG context
+            const systemInstructionWithContext = [
+                {
+                    text: `${baseSystemInstruction}\n\nRAG Context: ${context}`,
+                },
+            ];
+
+            // Prepare contents with history and current query
+            const contents = [
+                ...history.map((msg: ChatMessage) => ({
+                    role: msg.role,
+                    parts: msg.parts.map((part) => ({ text: part.text })),
+                })),
+                {
+                    role: "user",
+                    parts: [{ text: query }],
+                },
+            ];
 
             // Stream response from Gemini
-            const stream = await chat.sendMessageStream({
-                message: query,
+            const response = await genAI.models.generateContentStream({
+                model,
+                config: {
+                    thinkingConfig: {
+                        thinkingBudget: -1,
+                    },
+                    tools: [{ urlContext: {} }],
+                    responseMimeType: "text/plain",
+                    systemInstruction: systemInstructionWithContext,
+                },
+                contents,
             });
 
-            for await (const chunk of stream) {
+            for await (const chunk of response) {
                 const text = chunk.text;
                 if (text) {
                     const response: StreamResponse = { text };
@@ -110,17 +238,45 @@ app.post(
 
             res.write("data: [DONE]\n\n");
             res.end();
-        } catch (error) {
-            console.error("Error in /api/rag:", error);
-            res.write(
-                `data: ${JSON.stringify({
-                    error: "Internal server error",
-                })}\n\n`
-            );
-            res.end();
+        } catch (error: unknown) {
+            console.error("Error in /chat:", error);
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : "Internal server error";
+
+            if (!res.headersSent) {
+                res.status(500).json({ error: errorMessage });
+            } else {
+                res.write(
+                    `data: ${JSON.stringify({
+                        error: errorMessage,
+                    })}\n\n`
+                );
+                res.end();
+            }
         }
     }
 );
 
-const PORT = 3001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Health check endpoint
+app.get("/health", (_req: Request, res: Response): void => {
+    res.json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+    console.log("SIGTERM received, shutting down gracefully");
+    process.exit(0);
+});
+
+process.on("SIGINT", () => {
+    console.log("SIGINT received, shutting down gracefully");
+    process.exit(0);
+});
