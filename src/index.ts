@@ -30,6 +30,12 @@ interface AddDocumentRequestBody {
 // Initialize Express
 const app = express();
 app.use(express.json());
+// app.use(
+//     cors({
+//         origin: "http://localhost:3000",
+//     })
+// );
+
 app.use(
     cors({
         origin: "https://bitai.millerbit.biz/",
@@ -48,15 +54,33 @@ if (!process.env.POSTGRES_URL) {
 // Initialize GoogleGenAI
 const genAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY! });
 const model = "gemini-2.5-flash";
-const embeddingModel = "gemini-embedding-exp-03-07";
+const embeddingModel = "models/text-embedding-004";
 
 const baseSystemInstruction = `You are BitAI,
 
 Use the provided context from the RAG system to answer questions accurately. If the RAG system does not provide relevant documents or information, generate a response based on your own knowledge and reasoning, ensuring it is helpful and accurate to the best of your abilities.
-
-Answer in Lao language when requested.
-
 Be helpful, conversational, and provide detailed responses based on the context or your knowledge.`;
+
+// Translation function to translate text to English using Gemini
+async function translateToEnglish(text: string): Promise<string> {
+    try {
+        const translationPrompt = `Translate the following text to English and just give me the result do not add anything: "${text}"`;
+        const response = await genAI.models.generateContent({
+            model,
+            contents: [{ role: "user", parts: [{ text: translationPrompt }] }],
+        });
+
+        const translatedText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (translatedText) {
+            return translatedText;
+        } else {
+            throw new Error("No valid translation found in the response");
+        }
+    } catch (error) {
+        console.error("Translation error:", error);
+        throw new Error("Failed to translate text to English");
+    }
+}
 
 // Custom embedding function for gemini-embedding-exp-03-07
 async function generateEmbedding(text: string): Promise<number[]> {
@@ -64,10 +88,9 @@ async function generateEmbedding(text: string): Promise<number[]> {
         const response = await genAI.models.embedContent({
             model: embeddingModel,
             contents: text,
-            config: { taskType: "RETRIEVAL_DOCUMENT" }, // Fixed: Changed taskType to task_type
+            config: { taskType: "RETRIEVAL_DOCUMENT" },
         });
 
-        // Check if embeddings and values exist
         if (!response.embeddings || !response.embeddings[0]?.values) {
             throw new Error("Failed to generate valid embedding: response is empty or invalid");
         }
@@ -116,15 +139,7 @@ async function initializeVectorStore(): Promise<PGVectorStore> {
     }
 }
 
-app.get("/", (req, res) => {
-    res.send("Hiiiiiii")
-})
-
-app.get("/kuy", (req, res) => {
-    res.send("Kuy")
-})
-
-// New endpoint to add documents to PGVectorStore
+// Endpoint to add documents to PGVectorStore with translation
 app.post(
     "/add-document",
     async (
@@ -133,7 +148,6 @@ app.post(
     ): Promise<void> => {
         const { content, metadata = {} } = req.body;
 
-        // Validate request body
         if (!content || typeof content !== "string") {
             res.status(400).json({
                 error: "Content is required and must be a string",
@@ -143,19 +157,18 @@ app.post(
 
         try {
             const vectorStore = await initializeVectorStore();
-
-            // Add document to vector store
+            const englishContent = await translateToEnglish(content);
             await vectorStore.addDocuments([
                 {
-                    pageContent: content,
-                    metadata,
+                    pageContent: englishContent,
+                    metadata: { ...metadata, originalContent: content },
                 },
             ]);
 
             res.status(200).json({
                 message: "Document added successfully",
-                content,
-                metadata,
+                content: englishContent,
+                metadata: { ...metadata, originalContent: content },
             });
         } catch (error: unknown) {
             console.error("Error adding document:", error);
@@ -168,7 +181,7 @@ app.post(
     }
 );
 
-// Chat Stream API with RAG and history
+// Chat Stream API with RAG, history, and query translation
 app.post(
     "/chat",
     async (
@@ -177,7 +190,6 @@ app.post(
     ): Promise<void> => {
         const { query, history = [] } = req.body;
 
-        // Validate request body
         if (!query || typeof query !== "string") {
             res.status(400).json({
                 error: "Query is required and must be a string",
@@ -190,27 +202,22 @@ app.post(
         res.setHeader("Connection", "keep-alive");
 
         try {
-            // Initialize vector store
             const vectorStore = await initializeVectorStore();
+            const englishQuery = await translateToEnglish(query);
+            const retrievedDocs = await vectorStore.similaritySearch(englishQuery, 3);
+            const context = retrievedDocs.map((doc) => doc.pageContent).join("\n");
 
-            // Retrieve relevant documents
-            const retrievedDocs = await vectorStore.similaritySearch(query, 3);
-            const context = retrievedDocs
-                .map((doc) => doc.pageContent)
-                .join("\n");
-
-            // Log similarity search results with scores
-            const test = await vectorStore.similaritySearchWithScore(query, 3);
+            console.log("Original query:", query);
+            console.log("English query:", englishQuery);
+            const test = await vectorStore.similaritySearchWithScore(englishQuery, 3);
             console.log("Similarity Search Results:", test);
 
-            // Combine base system instruction with RAG context
             const systemInstructionWithContext = [
                 {
                     text: `${baseSystemInstruction}\n\nRAG Context: ${context}`,
                 },
             ];
 
-            // Prepare contents with history and current query
             const contents = [
                 ...history.map((msg: ChatMessage) => ({
                     role: msg.role,
@@ -222,7 +229,6 @@ app.post(
                 },
             ];
 
-            // Stream response from Gemini
             const response = await genAI.models.generateContentStream({
                 model,
                 config: {
