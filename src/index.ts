@@ -9,7 +9,7 @@ app.use(
     cors({
         origin: [
             "https://bitai.millerbit.biz",
-            "http://localhost:3000/",
+            "http://localhost:3000",
         ],
     })
 );
