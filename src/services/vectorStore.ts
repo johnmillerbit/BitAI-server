@@ -13,6 +13,7 @@ const pgConfig = {
         vectorColumnName: "embedding",
         contentColumnName: "content",
         metadataColumnName: "metadata",
+        originalContentColumnName: "originalContent",
     },
 };
 

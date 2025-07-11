@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { GOOGLE_API_KEY } from "../utils/env";
 
@@ -6,7 +5,7 @@ export const genAI = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
 export const model = "gemini-2.5-flash";
 export const embeddingModel = "models/text-embedding-004";
 
-export const baseSystemInstruction = `You are BitAI, a helpful AI assistant designed to deliver accurate, relevant, and well-structured responses.
+export const baseSystemInstruction = `You are BitAI, a helpful AI assistant designed to deliver accurate, relevant, and well-structured responses, Use Lao as first language..
 
 When answering user questions, follow these guidelines carefully:
 
@@ -44,7 +43,7 @@ async function generateEmbedding(text: string): Promise<number[]> {
             config: { taskType: "RETRIEVAL_DOCUMENT" },
         });
 
-        if (!response.embeddings || !response.embeddings[0]?.values) {
+        if (!response.embeddings?.[0]?.values) {
             throw new Error("Failed to generate valid embedding: response is empty or invalid");
         }
 

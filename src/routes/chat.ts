@@ -22,10 +22,11 @@ router.post("/", async (req: Request<{}, {}, ChatRequestBody>, res: Response): P
         const englishQuery = await translateToEnglish(query);
         const retrievedDocs = await vectorStore.similaritySearch(englishQuery, 3);
         const context = retrievedDocs.map((doc) => doc.pageContent).join("\n");
+        const originalLanguage = retrievedDocs.map((doc) => doc.metadata.originalContent).join("\n")
 
         const systemInstructionWithContext = [
             {
-                text: `${baseSystemInstruction}\n\nRAG Context: ${context}`,
+                text: `${baseSystemInstruction}\n\nRAG Context:\n- Original language:\n ${originalLanguage}\n- English context:\n${context}`,
             },
         ];
 

@@ -14,3 +14,4 @@ if (!process.env.POSTGRES_URL) {
 export const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 export const POSTGRES_URL = process.env.POSTGRES_URL;
 export const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+export const X_API_KEY = process.env.X_API_KEY;

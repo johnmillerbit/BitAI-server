@@ -15,5 +15,6 @@ export interface StreamResponse {
 
 export interface AddDocumentRequestBody {
     content: string;
+    originalContent: string;
     metadata?: Record<string, any>;
 }
