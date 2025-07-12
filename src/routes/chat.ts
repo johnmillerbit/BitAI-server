@@ -29,6 +29,7 @@ router.post("/", async (req: Request<{}, {}, ChatRequestBody>, res: Response): P
                 text: `${baseSystemInstruction}\n\nRAG Context:\n- Original language:\n ${originalLanguage}\n- English context:\n${context}`,
             },
         ];
+        console.log("System Instruction with Context:", systemInstructionWithContext);
 
         const contents = [
             ...history.map((msg) => ({

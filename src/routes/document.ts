@@ -38,7 +38,7 @@ router.post(
             await vectorStore.addDocuments([
                 {
                     pageContent: englishContent,
-                    metadata: { ...metadata },
+                    metadata: { ...metadata, originalContent: content },
                 },
             ]);
 
