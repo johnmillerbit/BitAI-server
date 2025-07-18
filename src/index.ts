@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { PORT } from "./utils/env";
 import router from "./routes";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
 app.use(express.json());
@@ -16,6 +17,9 @@ app.use(
 
 app.use("/", router);
 app.use('/uploads', express.static('uploads'));
+
+app.use(errorHandler);
+
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

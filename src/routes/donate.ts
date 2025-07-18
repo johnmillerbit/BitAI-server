@@ -2,8 +2,8 @@ import { Router, Request, Response } from "express";
 import pool from "../services/db";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
-import { X_API_KEY } from "../utils/env";
+import { asyncHandler } from "../utils/asyncHandler";
+import { requireApiKey } from "../middleware/apiKey";
 
 // Donator interface
 interface Donator {
@@ -22,17 +22,6 @@ interface DonatorRequestBody {
 }
 
 const UPLOADS_DIR = "uploads";
-
-/**
- * Ensure uploads directory exists
- */
-function ensureUploadsDir(dir: string) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-  }
-}
-
-ensureUploadsDir(UPLOADS_DIR);
 
 /**
  * Multer storage configuration
@@ -65,19 +54,6 @@ const upload = multer({
   fileFilter: imageFileFilter,
 });
 
-/**
- * Middleware to check for X-API-KEY header
- */
-function requireApiKey(req: Request, res: Response, next: () => void) {
-  const apiKey = X_API_KEY;
-  const clientKey = req.header("x-api-key");
-  if (!apiKey || clientKey !== apiKey) {
-    res.status(401).json({ error: "Unauthorized: Invalid or missing API key" });
-    return;
-  }
-  next();
-}
-
 const router = Router();
 
 /**
@@ -87,29 +63,23 @@ router.post(
   "/",
   requireApiKey,
   upload.single("slip"),
-  async (req: Request<unknown, unknown, DonatorRequestBody>, res: Response): Promise<void> => {
-    try {
-      const { name, message } = req.body;
-      const file = req.file;
-      if (!file) {
-        res.status(400).json({ error: "Slip image is required" });
-        return;
-      }
-      const filePath = file.path;
-      const query = await pool.query<Donator>(
-        "INSERT INTO donator (name, message, file_path) VALUES ($1, $2, $3) RETURNING *",
-        [name || "Anonymous", message || "", filePath]
-      );
-      res.status(200).json({
-        message: "Donator added successfully",
-        donator: query.rows[0],
-      });
-    } catch (error) {
-      console.error("Error in /donate:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to add donator";
-      res.status(500).json({ error: errorMessage });
+  asyncHandler(async (req: Request<unknown, unknown, DonatorRequestBody>, res: Response) => {
+    const { name, message } = req.body;
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "Slip image is required" });
+      return;
     }
-  }
+    const filePath = file.path;
+    const query = await pool.query<Donator>(
+      "INSERT INTO donator (name, message, file_path) VALUES ($1, $2, $3) RETURNING *",
+      [name || "Anonymous", message || "", filePath]
+    );
+    res.status(200).json({
+      message: "Donator added successfully",
+      donator: query.rows[0],
+    });
+  })
 );
 
 /**
@@ -118,19 +88,13 @@ router.post(
 router.get(
   "/",
   requireApiKey,
-  async (_req: Request, res: Response): Promise<void> => {
-    try {
-      const query = await pool.query<Donator>("SELECT * FROM donator order by id desc");
-      res.status(200).json({
-        message: "Donators retrieved successfully",
-        donators: query.rows,
-      });
-    } catch (error) {
-      console.error("Error in /donate:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to retrieve donators";
-      res.status(500).json({ error: errorMessage });
-    }
-  }
+  asyncHandler(async (_req: Request, res: Response) => {
+    const query = await pool.query<Donator>("SELECT * FROM donator order by id desc");
+    res.status(200).json({
+      message: "Donators retrieved successfully",
+      donators: query.rows,
+    });
+  })
 );
 
 export default router;
