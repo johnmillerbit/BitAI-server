@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import { asyncHandler } from "../utils/asyncHandler";
 import { requireApiKey } from "../middleware/apiKey";
+import { allowDonator, getAllDonators, getAllowedDonators, getUnallowedDonators, deleteDonator } from "../services/donator";
 
 // Donator interface
 interface Donator {
@@ -82,17 +83,75 @@ router.post(
   })
 );
 
-/**
- * GET /donate - Retrieve all donators
- */
+router.put(
+  "/:id",
+  requireApiKey,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: "Donator ID is required" });
+      return;
+    }
+    await allowDonator(parseInt(id));
+    res.status(200).json({
+      message: "Donator updated successfully",
+    });
+  })
+);
+
+router.delete(
+  "/:id",
+  requireApiKey,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ error: "Donator ID is required" });
+      return;
+    }
+    const deletedDonator = await deleteDonator(parseInt(id));
+    if (!deletedDonator) {
+      res.status(404).json({ error: "Donator not found" });
+      return;
+    }
+    res.status(200).json({
+      message: "Donator deleted successfully",
+      donator: deletedDonator,
+    });
+  })
+);
+
 router.get(
   "/",
   requireApiKey,
   asyncHandler(async (_req: Request, res: Response) => {
-    const query = await pool.query<Donator>("SELECT * FROM donator order by id desc");
+    const donators = await getAllDonators();
     res.status(200).json({
       message: "Donators retrieved successfully",
-      donators: query.rows,
+      donators,
+    });
+  })
+);
+
+router.get(
+  "/allowed",
+  requireApiKey,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const donators = await getAllowedDonators();
+    res.status(200).json({
+      message: "Donators retrieved successfully",
+      donators,
+    });
+  })
+);
+
+router.get(
+  "/unallowed",
+  requireApiKey,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const donators = await getUnallowedDonators();
+    res.status(200).json({
+      message: "Donators retrieved successfully",
+      donators,
     });
   })
 );

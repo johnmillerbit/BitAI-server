@@ -4,6 +4,7 @@ import { initializeVectorStore } from "../services/vectorStore";
 import { translateToEnglish } from "../services/genai";
 import { requireApiKey } from "../middleware/apiKey";
 import { asyncHandler } from "../utils/asyncHandler";
+import { getDocuments, deleteDocument } from "../services/documents";
 
 const router = Router();
 
@@ -38,6 +39,33 @@ router.post(
             metadata: { ...metadata },
             originalContent: content,
         });
+    })
+);
+
+router.get(
+    "/",
+    requireApiKey,
+    asyncHandler(async (req: Request, res: Response) => {
+        const documents = await getDocuments();
+        res.status(200).json(documents);
+    })
+);
+
+router.delete(
+    "/:id",
+    requireApiKey,
+    asyncHandler(async (req: Request, res: Response) => {
+        const { id } = req.params;
+        if (!id) {
+            res.status(400).json({ error: "Document ID is required" });
+            return;
+        }
+        const result = await deleteDocument(id);
+        if (!result) {
+            res.status(404).json({ error: "Document not found" });
+            return;
+        }
+        res.status(200).json({ message: "Document deleted successfully" });
     })
 );
 
