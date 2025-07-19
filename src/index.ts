@@ -1,8 +1,9 @@
-import express from "express";
 import cors from "cors";
-import { PORT } from "./utils/env";
-import router from "./routes";
+import express from "express";
 
+import { errorHandler } from "./middleware/errorHandler";
+import router from "./routes";
+import { env } from "./utils/env";
 const app = express();
 app.use(express.json());
 app.use(
@@ -16,8 +17,11 @@ app.use(
 
 app.use("/", router);
 app.use('/uploads', express.static('uploads'));
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+
+app.use(errorHandler);
+
+app.listen(env.PORT, () => {
+    console.log(`Server running on port ${env.PORT}`);
 });
 
 process.on("SIGTERM", () => {

@@ -38,9 +38,6 @@ importers:
       pg:
         specifier: ^8.16.2
         version: 8.16.2
-      translate:
-        specifier: ^3.0.1
-        version: 3.0.1
     devDependencies:
       '@types/cors':
         specifier: ^2.8.19
@@ -1823,9 +1820,6 @@ packages:
   tr46@0.0.3:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
 
-  translate@3.0.1:
-    resolution: {integrity: sha512-ZePIRh2uuN7ofL6V2KfRh71525pwPCC8CtoWJg29tQcr3vhGTFXzz2nYG+rmRxlZ5PCcMza/GDXqxLFx5omVpQ==}
-
   ts-error@1.0.6:
     resolution: {integrity: sha512-tLJxacIQUM82IR7JO1UUkKlYuUTmoY9HBJAmNWFzheSlDS5SPMcNIepejHJa4BpPQLAcbRhRf3GDJzyj6rbKvA==}
 
@@ -3500,8 +3494,6 @@ snapshots:
       url-parse: 1.5.10
 
   tr46@0.0.3: {}
-
-  translate@3.0.1: {}
 
   ts-error@1.0.6: {}
 

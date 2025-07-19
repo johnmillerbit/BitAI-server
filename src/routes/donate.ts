@@ -1,9 +1,11 @@
 import { Router, Request, Response } from "express";
-import pool from "../services/db";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
-import { X_API_KEY } from "../utils/env";
+import { asyncHandler } from "../utils/asyncHandler";
+import { requireApiKey } from "../middleware/apiKey";
+import { allowDonator, getAllDonators, getAllowedDonators, getUnallowedDonators, deleteDonator } from "../services/donator";
+import AppError from "../utils/AppError";
+import pool from "../services/db"; // Keep pool for now, will refactor donator service later
 
 // Donator interface
 interface Donator {
@@ -24,17 +26,6 @@ interface DonatorRequestBody {
 const UPLOADS_DIR = "uploads";
 
 /**
- * Ensure uploads directory exists
- */
-function ensureUploadsDir(dir: string) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir);
-  }
-}
-
-ensureUploadsDir(UPLOADS_DIR);
-
-/**
  * Multer storage configuration
  */
 const storage = multer.diskStorage({
@@ -49,14 +40,14 @@ const storage = multer.diskStorage({
  * Multer file filter for images
  */
 function imageFileFilter(_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) {
-  const allowedTypes = /jpeg|jpg|png/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
-  if (extname && mimetype) {
-    cb(null, true);
-  } else {
-    cb(new Error("Only images (jpg, jpeg, png) are allowed"));
-  }
+    const allowedTypes = /jpeg|jpg|png/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+        cb(null, true);
+    } else {
+        cb(new AppError("Only images (jpg, jpeg, png) are allowed", 400));
+    }
 }
 
 const upload = multer({
@@ -65,72 +56,106 @@ const upload = multer({
   fileFilter: imageFileFilter,
 });
 
-/**
- * Middleware to check for X-API-KEY header
- */
-function requireApiKey(req: Request, res: Response, next: () => void) {
-  const apiKey = X_API_KEY;
-  const clientKey = req.header("x-api-key");
-  if (!apiKey || clientKey !== apiKey) {
-    res.status(401).json({ error: "Unauthorized: Invalid or missing API key" });
-    return;
-  }
-  next();
-}
-
 const router = Router();
 
 /**
  * POST /donate - Add a donator with slip image
  */
 router.post(
-  "/",
-  requireApiKey,
-  upload.single("slip"),
-  async (req: Request<unknown, unknown, DonatorRequestBody>, res: Response): Promise<void> => {
-    try {
-      const { name, message } = req.body;
-      const file = req.file;
-      if (!file) {
-        res.status(400).json({ error: "Slip image is required" });
-        return;
-      }
-      const filePath = file.path;
-      const query = await pool.query<Donator>(
-        "INSERT INTO donator (name, message, file_path) VALUES ($1, $2, $3) RETURNING *",
-        [name || "Anonymous", message || "", filePath]
-      );
-      res.status(200).json({
-        message: "Donator added successfully",
-        donator: query.rows[0],
-      });
-    } catch (error) {
-      console.error("Error in /donate:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to add donator";
-      res.status(500).json({ error: errorMessage });
-    }
-  }
+    "/",
+    requireApiKey,
+    upload.single("slip"),
+    asyncHandler(async (req: Request<unknown, unknown, DonatorRequestBody>, res: Response) => {
+        const { name, message } = req.body;
+        const file = req.file;
+
+        if (!file) {
+            throw new AppError("Slip image is required", 400);
+        }
+
+        const filePath = file.path;
+        const client = await pool.connect();
+        try {
+            const query = await client.query<Donator>(
+                "INSERT INTO donator (name, message, file_path) VALUES ($1, $2, $3) RETURNING *",
+                [name || "Anonymous", message || "", filePath]
+            );
+            res.status(201).json({
+                message: "Donator added successfully",
+                donator: query.rows[0],
+            });
+        } catch (error: any) {
+            throw new AppError(`Failed to add donator: ${error.message}`, 500);
+        } finally {
+            client.release();
+        }
+    })
 );
 
-/**
- * GET /donate - Retrieve all donators
- */
+router.put(
+    "/:id",
+    requireApiKey,
+    asyncHandler(async (req: Request, res: Response) => {
+        const { id } = req.params;
+        if (!id) {
+            throw new AppError("Donator ID is required", 400);
+        }
+        await allowDonator(parseInt(id)); // allowDonator now throws AppError for 404
+        res.status(200).json({
+            message: "Donator updated successfully",
+        });
+    })
+);
+
+router.delete(
+    "/:id",
+    requireApiKey,
+    asyncHandler(async (req: Request, res: Response) => {
+        const { id } = req.params;
+        if (!id) {
+            throw new AppError("Donator ID is required", 400);
+        }
+        await deleteDonator(parseInt(id)); // deleteDonator now throws AppError for 404
+        res.status(200).json({
+            message: "Donator deleted successfully",
+        });
+    })
+);
+
 router.get(
   "/",
   requireApiKey,
-  async (_req: Request, res: Response): Promise<void> => {
-    try {
-      const query = await pool.query<Donator>("SELECT * FROM donator order by id desc");
-      res.status(200).json({
-        message: "Donators retrieved successfully",
-        donators: query.rows,
-      });
-    } catch (error) {
-      console.error("Error in /donate:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to retrieve donators";
-      res.status(500).json({ error: errorMessage });
-    }
-  }
+  asyncHandler(async (_req: Request, res: Response) => {
+    const donators = await getAllDonators();
+    res.status(200).json({
+      message: "Donators retrieved successfully",
+      donators,
+    });
+  })
+);
+
+router.get(
+  "/allowed",
+  requireApiKey,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const donators = await getAllowedDonators();
+    res.status(200).json({
+      message: "Donators retrieved successfully",
+      donators,
+    });
+  })
+);
+
+router.get(
+  "/unallowed",
+  requireApiKey,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const donators = await getUnallowedDonators();
+    res.status(200).json({
+      message: "Donators retrieved successfully",
+      donators,
+    });
+  })
 );
 
 export default router;

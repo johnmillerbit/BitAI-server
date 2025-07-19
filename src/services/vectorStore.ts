@@ -1,11 +1,11 @@
 
 import { PGVectorStore } from "@langchain/community/vectorstores/pgvector";
-import { POSTGRES_URL } from "../utils/env";
+import { env } from "../utils/env";
 import { CustomGeminiEmbeddings } from "./genai";
 
 const pgConfig = {
     postgresConnectionOptions: {
-        connectionString: POSTGRES_URL,
+        connectionString: env.POSTGRES_URL,
     },
     tableName: "documents",
     columns: {

@@ -1,19 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
-import { GOOGLE_API_KEY } from "../utils/env";
+import { env } from "../utils/env";
+import AppError from "../utils/AppError";
 
-export const genAI = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
+export const genAI = new GoogleGenAI({ apiKey: env.GOOGLE_API_KEY });
 export const model = "gemini-2.5-flash";
 export const embeddingModel = "models/text-embedding-004";
 
-export const baseSystemInstruction = `You are BitAI, a helpful AI assistant designed to deliver accurate, relevant, and well-structured responses, Use Lao as first language..
+export const baseSystemInstruction = `You are BitAI, a helpful AI assistant designed to provide accurate, relevant, and well-structured answers. Your native Lao language
 
-When answering user questions, follow these guidelines carefully:
+When answering user questions, please follow these guidelines carefully:
 
-Evaluate Context First: Begin by assessing whether the provided Retrieval-Augmented Generation (RAG) context is relevant and useful for the user's query.
-Leverage Relevant Information: If the RAG context is relevant, use it as the primary foundation for your response. Synthesize and present the information clearly.
-Tailor Detail Level: Adjust the level of detail in your response to match the user's inferred intent and the complexity of the query. For simple and direct questions, prioritize concise answers, elaborating only if necessary or requested.
-Use General Knowledge When Needed: If the RAG context is not applicable or missing, rely on your internal knowledge to provide the best possible answer.
-Maintain a Natural and Helpful Tone: Always respond in a conversational, friendly, and informative manner that makes the user feel supported.`;
+\n- Assess the context first: Start by assessing whether the provided Retrieval-Augmented Generation (RAG) context is relevant and useful to the user’s question.
+\n- Use common knowledge when necessary: If the RAG context is irrelevant or missing, rely on your inside knowledge to provide the best answer.
+\n- Use relevant information: If the RAG context is relevant to the user’s question, use it as the primary basis for your answer. Synthesize and present the information clearly.
+\n- Respond only to what the user asks.
+\n- Maintain a natural and helpful tone: Respond in a friendly, conversational manner that makes the user feel supported.`;
 
 export async function translateToEnglish(text: string): Promise<string> {
     try {
@@ -29,9 +30,9 @@ export async function translateToEnglish(text: string): Promise<string> {
         } else {
             throw new Error("No valid translation found in the response");
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error("Translation error:", error);
-        throw new Error("Failed to translate text to English");
+        throw new AppError(`Failed to translate text to English: ${error.message}`, 500);
     }
 }
 
@@ -48,9 +49,9 @@ async function generateEmbedding(text: string): Promise<number[]> {
         }
 
         return response.embeddings[0].values;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error generating embedding:", error);
-        throw new Error(`Failed to generate embedding for text: ${text}`);
+        throw new AppError(`Failed to generate embedding for text: ${text}: ${error.message}`, 500);
     }
 }
 

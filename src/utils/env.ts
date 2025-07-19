@@ -11,7 +11,14 @@ if (!process.env.POSTGRES_URL) {
     throw new Error("POSTGRES_URL is required");
 }
 
-export const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-export const POSTGRES_URL = process.env.POSTGRES_URL;
-export const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
-export const X_API_KEY = process.env.X_API_KEY;
+if (!process.env.X_API_KEY) {
+    throw new Error("X_API_KEY is required");
+}
+
+export const env = {
+    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    POSTGRES_URL: process.env.POSTGRES_URL,
+    PORT: process.env.PORT ? parseInt(process.env.PORT, 10) : 3001,
+    X_API_KEY: process.env.X_API_KEY,
+    NODE_ENV: process.env.NODE_ENV || "development",
+};

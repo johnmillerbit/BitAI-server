@@ -1,10 +1,10 @@
 
 import { Router } from "express";
-import documentRouter from "./document";
-import chatRouter from "./chat";
-import healthRouter from "./health";
-import donateRouter from "./donate";
 
+import chatRouter from "./chat";
+import documentRouter from "./document";
+import donateRouter from "./donate";
+import healthRouter from "./health";
 
 const router = Router();
 
