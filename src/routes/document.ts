@@ -5,6 +5,7 @@ import { translateToEnglish } from "../services/genai";
 import { requireApiKey } from "../middleware/apiKey";
 import { asyncHandler } from "../utils/asyncHandler";
 import { getDocuments, deleteDocument } from "../services/documents";
+import AppError from "../utils/AppError";
 
 const router = Router();
 
@@ -18,10 +19,7 @@ router.post(
         const { content, metadata = {} } = req.body;
 
         if (!content || typeof content !== "string") {
-            res.status(400).json({
-                error: "Content is required and must be a string",
-            });
-            return;
+            throw new AppError("Content is required and must be a string", 400);
         }
 
         const vectorStore = await initializeVectorStore();
@@ -57,14 +55,9 @@ router.delete(
     asyncHandler(async (req: Request, res: Response) => {
         const { id } = req.params;
         if (!id) {
-            res.status(400).json({ error: "Document ID is required" });
-            return;
+            throw new AppError("Document ID is required", 400);
         }
-        const result = await deleteDocument(id);
-        if (!result) {
-            res.status(404).json({ error: "Document not found" });
-            return;
-        }
+        await deleteDocument(id); // deleteDocument now throws AppError for 404
         res.status(200).json({ message: "Document deleted successfully" });
     })
 );

@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
-import { GOOGLE_API_KEY } from "../utils/env";
+import { env } from "../utils/env";
+import AppError from "../utils/AppError";
 
-export const genAI = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
+export const genAI = new GoogleGenAI({ apiKey: env.GOOGLE_API_KEY });
 export const model = "gemini-2.5-flash";
 export const embeddingModel = "models/text-embedding-004";
 
@@ -29,9 +30,9 @@ export async function translateToEnglish(text: string): Promise<string> {
         } else {
             throw new Error("No valid translation found in the response");
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error("Translation error:", error);
-        throw new Error("Failed to translate text to English");
+        throw new AppError(`Failed to translate text to English: ${error.message}`, 500);
     }
 }
 
@@ -48,9 +49,9 @@ async function generateEmbedding(text: string): Promise<number[]> {
         }
 
         return response.embeddings[0].values;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error generating embedding:", error);
-        throw new Error(`Failed to generate embedding for text: ${text}`);
+        throw new AppError(`Failed to generate embedding for text: ${text}: ${error.message}`, 500);
     }
 }
 

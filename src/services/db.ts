@@ -1,16 +1,17 @@
 import { Pool } from "pg";
-import { POSTGRES_URL } from "../utils/env";
+import { env } from "../utils/env";
+import AppError from "../utils/AppError";
 
 const pool = new Pool({
-    connectionString: POSTGRES_URL,
+    connectionString: env.POSTGRES_URL,
 });
 
 const testConnection = async () => {
     try {
         await pool.connect();
         console.log("Connected to the database");
-    } catch (error) {
-        console.error("Error connecting to the database:", error);
+    } catch (error: any) {
+        throw new AppError(`Error connecting to the database: ${error.message}`, 500);
     }
 };
 

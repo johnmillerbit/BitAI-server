@@ -1,12 +1,11 @@
-import { Request, Response, NextFunction } from "express";
-import { X_API_KEY } from "../utils/env";
+import { NextFunction, Request, Response } from "express";
+import { env } from "../utils/env";
+import AppError from "../utils/AppError";
 
 export function requireApiKey(req: Request, res: Response, next: NextFunction) {
-  const apiKey = X_API_KEY;
-  const clientKey = req.header("x-api-key");
-  if (!apiKey || clientKey !== apiKey) {
-    res.status(401).json({ error: "Unauthorized: Invalid or missing API key" });
-    return;
-  }
-  next();
+    const clientKey = req.header("x-api-key");
+    if (!env.X_API_KEY || clientKey !== env.X_API_KEY) {
+        return next(new AppError("Unauthorized: Invalid or missing API key", 401));
+    }
+    next();
 }
