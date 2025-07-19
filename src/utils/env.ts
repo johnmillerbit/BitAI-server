@@ -11,6 +11,10 @@ if (!process.env.POSTGRES_URL) {
     throw new Error("POSTGRES_URL is required");
 }
 
+if (!process.env.X_API_KEY) {
+    throw new Error("X_API_KEY is required");
+}
+
 export const env = {
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
     POSTGRES_URL: process.env.POSTGRES_URL,
